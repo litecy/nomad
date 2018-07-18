@@ -23,6 +23,17 @@ job "binstore-storagelocker" {
     weight = 50
   }
 
+   spread {
+     attribute = "${meta.rack}"
+     weight = 100
+     target "r1" {
+       percent = 40
+     }
+     target "r2" {
+       percent = 60
+     }
+   }
+
   update {
     stagger      = "60s"
     max_parallel = 2
@@ -88,6 +99,20 @@ job "binstore-storagelocker" {
       value = "dc2"
       operator = "="
       weight = 100
+    }
+
+    spread {
+      attribute = "${node.datacenter}"
+      weight = 50
+      target "dc1" {
+        percent = 50
+      }
+      target "dc2" {
+        percent = 25
+      }
+      target "dc3" {
+        percent = 25
+      }
     }
 
 
