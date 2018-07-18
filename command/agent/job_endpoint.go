@@ -637,6 +637,13 @@ func ApiJobToStructJob(job *api.Job) *structs.Job {
 		}
 	}
 
+	if l := len(job.Spreads); l != 0 {
+		j.Spreads = make([]*structs.Spread, l)
+		for i, apiSpread := range job.Spreads {
+			j.Spreads[i] = ApiSpreadToStructs(apiSpread)
+		}
+	}
+
 	if job.Periodic != nil {
 		j.Periodic = &structs.PeriodicConfig{
 			Enabled:         *job.Periodic.Enabled,
@@ -724,6 +731,13 @@ func ApiTgToStructsTG(taskGroup *api.TaskGroup, tg *structs.TaskGroup) {
 		Sticky:  *taskGroup.EphemeralDisk.Sticky,
 		SizeMB:  *taskGroup.EphemeralDisk.SizeMB,
 		Migrate: *taskGroup.EphemeralDisk.Migrate,
+	}
+
+	if l := len(taskGroup.Spreads); l != 0 {
+		tg.Spreads = make([]*structs.Spread, l)
+		for k, spread := range taskGroup.Spreads {
+			tg.Spreads[k] = ApiSpreadToStructs(spread)
+		}
 	}
 
 	if taskGroup.Update != nil {
@@ -925,4 +939,20 @@ func ApiAffinityToStructs(a1 *api.Affinity, a2 *structs.Affinity) {
 	a2.Operand = a1.Operand
 	a2.RTarget = a1.RTarget
 	a2.Weight = a1.Weight
+}
+
+func ApiSpreadToStructs(a1 *api.Spread) *structs.Spread {
+	ret := &structs.Spread{}
+	ret.Attribute = a1.Attribute
+	ret.Weight = a1.Weight
+	if a1.SpreadTarget != nil {
+		ret.SpreadTarget = make([]*structs.SpreadTarget, len(a1.SpreadTarget))
+		for i, st := range a1.SpreadTarget {
+			ret.SpreadTarget[i] = &structs.SpreadTarget{
+				Value:   st.Value,
+				Percent: st.Percent,
+			}
+		}
+	}
+	return ret
 }
