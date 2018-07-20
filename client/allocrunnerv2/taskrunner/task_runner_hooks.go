@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/nomad/client/allocrunnerv2/interfaces"
 	"github.com/hashicorp/nomad/client/allocrunnerv2/taskrunner/state"
 	"github.com/hashicorp/nomad/nomad/structs"
@@ -47,6 +48,17 @@ func (tr *TaskRunner) initHooks() {
 			templates:    task.Templates,
 			clientConfig: tr.clientConfig,
 			envBuilder:   tr.envBuilder,
+		}))
+	}
+
+	// If there are any services, add the hook
+	if len(task.Services) != 0 {
+		tr.runnerHooks = append(tr.runnerHooks, newServiceHook(serviceHookConfig{
+			alloc:     tr.Alloc(),
+			task:      tr.Task(),
+			consul:    nil,
+			restarter: tr,
+			logger:    hookLogger,
 		}))
 	}
 }
@@ -159,6 +171,7 @@ func (tr *TaskRunner) poststart() error {
 		}()
 	}
 
+	var merr multierror.Error
 	for _, hook := range tr.runnerHooks {
 		post, ok := hook.(interfaces.TaskPoststartHook)
 		if !ok {
@@ -174,9 +187,8 @@ func (tr *TaskRunner) poststart() error {
 
 		req := interfaces.TaskPoststartRequest{}
 		var resp interfaces.TaskPoststartResponse
-		// XXX We shouldn't exit on the first one
 		if err := post.Poststart(tr.ctx, &req, &resp); err != nil {
-			return fmt.Errorf("poststart hook %q failed: %v", name, err)
+			merr.Errors = append(merr.Errors, fmt.Errorf("poststart hook %q failed: %v", name, err))
 		}
 
 		if tr.logger.IsTrace() {
@@ -185,7 +197,10 @@ func (tr *TaskRunner) poststart() error {
 		}
 	}
 
-	return nil
+	if len(merr.Errors) == 1 {
+		return merr.Errors[0]
+	}
+	return merr.ErrorOrNil()
 }
 
 // stop is used to run the stop hooks.
@@ -239,6 +254,20 @@ func (tr *TaskRunner) updateHooks() {
 		}()
 	}
 
+	// Prepare state needed by Update hooks
+	alloc := tr.Alloc()
+	canary := false
+	if alloc.DeploymentStatus != nil {
+		canary = alloc.DeploymentStatus.Canary
+	}
+
+	task := tr.Task()
+	var networks structs.Networks
+	if task.Resources != nil {
+		networks = task.Resources.Networks
+	}
+
+	// Execute Update hooks
 	for _, hook := range tr.runnerHooks {
 		upd, ok := hook.(interfaces.TaskUpdateHook)
 		if !ok {
@@ -250,7 +279,13 @@ func (tr *TaskRunner) updateHooks() {
 
 		// Build the request
 		req := interfaces.TaskUpdateRequest{
-			VaultToken: tr.getVaultToken(),
+			VaultToken:    tr.getVaultToken(),
+			DriverNetwork: tr.driverNet, //XXX need a lock?
+			DriverExec:    tr.getDriverHandle(),
+			TaskEnv:       tr.envBuilder.Build(),
+			Canary:        canary,
+			Networks:      networks,
+			Services:      task.Services,
 		}
 
 		// Time the update hook

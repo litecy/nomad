@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/nomad/client/allocrunnerv2/interfaces"
 	"github.com/hashicorp/nomad/client/allocrunnerv2/taskrunner/state"
 	"github.com/hashicorp/nomad/client/config"
+	"github.com/hashicorp/nomad/client/consul"
 	"github.com/hashicorp/nomad/client/driver"
 	"github.com/hashicorp/nomad/client/driver/env"
 	clientstate "github.com/hashicorp/nomad/client/state"
@@ -121,6 +122,10 @@ type TaskRunner struct {
 	// transistions.
 	runnerHooks []interfaces.TaskHook
 
+	// consulClient is the client used by the consul service hook for
+	// registering services and checks
+	consulClient consul.ConsulServiceAPI
+
 	// vaultClient is the client to use to derive and renew Vault tokens
 	vaultClient vaultclient.VaultClient
 
@@ -137,6 +142,7 @@ type TaskRunner struct {
 type Config struct {
 	Alloc        *structs.Allocation
 	ClientConfig *config.Config
+	Consul       consul.ConsulServiceAPI
 	Task         *structs.Task
 	TaskDir      *allocdir.TaskDir
 	Logger       log.Logger
@@ -174,6 +180,7 @@ func NewTaskRunner(config *Config) (*TaskRunner, error) {
 		taskDir:      config.TaskDir,
 		taskName:     config.Task.Name,
 		envBuilder:   envBuilder,
+		consulClient: config.Consul,
 		vaultClient:  config.VaultClient,
 		//XXX Make a Copy to avoid races?
 		state:        config.Alloc.TaskStates[config.Task.Name],
@@ -368,7 +375,8 @@ func (tr *TaskRunner) runDriver() error {
 	// Grab the handle
 	tr.setDriverHandle(sresp.Handle)
 
-	//XXX need to capture the driver network
+	//XXX need to capture the driver network with a lock?
+	tr.driverNet = resp.Network
 
 	// Emit an event that we started
 	tr.SetState(structs.TaskStateRunning, structs.NewTaskEvent(structs.TaskStarted))

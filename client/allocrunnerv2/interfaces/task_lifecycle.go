@@ -3,7 +3,9 @@ package interfaces
 import (
 	"context"
 
+	"github.com/hashicorp/nomad/client/driver"
 	"github.com/hashicorp/nomad/client/driver/env"
+	cstructs "github.com/hashicorp/nomad/client/structs"
 	"github.com/hashicorp/nomad/nomad/structs"
 )
 
@@ -74,7 +76,14 @@ type TaskPrestartHook interface {
 }
 
 type TaskPoststartRequest struct {
-	// Network info
+	// Network info (may be nil)
+	DriverNetwork *cstructs.DriverNetwork
+
+	// Exec hook (may be nil)
+	DriverExec driver.ScriptExecutor
+
+	// TaskEnv is the task's environment
+	TaskEnv *env.TaskEnv
 }
 type TaskPoststartResponse struct{}
 
@@ -95,7 +104,13 @@ type TaskKillHook interface {
 	Kill(context.Context, *TaskKillRequest, *TaskKillResponse) error
 }
 
-type TaskExitedRequest struct{}
+type TaskExitedRequest struct {
+	// Network info (may be nil)
+	DriverNetwork *cstructs.DriverNetwork
+
+	// Exec hook (may be nil)
+	DriverExec driver.ScriptExecutor
+}
 type TaskExitedResponse struct{}
 
 type TaskExitedHook interface {
@@ -107,6 +122,28 @@ type TaskExitedHook interface {
 
 type TaskUpdateRequest struct {
 	VaultToken string
+
+	// Network info (may be nil)
+	DriverNetwork *cstructs.DriverNetwork
+
+	// Exec hook (may be nil)
+	DriverExec driver.ScriptExecutor
+
+	// TaskEnv is the task's environment
+	TaskEnv *env.TaskEnv
+
+	//XXX should we pass in the entire alloc instead of just the required
+	//fields below?
+
+	// Canary is true if this allocation is a canary
+	Canary bool
+
+	// Networks are the task's networks
+	//XXX can this change in an update?
+	Networks structs.Networks
+
+	// Services are the task's services
+	Services []*structs.Service
 }
 type TaskUpdateResponse struct{}
 
